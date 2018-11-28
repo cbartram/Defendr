@@ -1,3 +1,7 @@
+<p align="center">
+   <img src="./assets/defendr_logo.png" />
+</p>
+
 # Defendr
 
 Uses a Nest Camera to Detect motion and turn on Philips Hue lights when you aren't home to thwart potential intruders.
