@@ -10,7 +10,7 @@ const {
 } = require('./constants');
 const {
     getAccessToken
-} = require('./utils');
+} = require('./util');
 
 // Create the Express Server
 const app = express();
@@ -18,10 +18,20 @@ const app = express();
 figlet('Defendr', (err, data) => {
     console.log(chalk.blue(data));
     app.listen(PORT, () => {
-        console.log(chalk.green('===================================='));
+        console.log(chalk.green('================================='));
         console.log(chalk.green(`| Server Listening on port ${PORT} |`));
-        console.log(chalk.green('===================================='));
+        console.log(chalk.green('================================='));
     });
+});
+
+/**
+ * Handles redirecting the user to the Authorization url to show them what permissions are necessary for this
+ * app to function correctly
+ * @route GET /
+ */
+app.get('/', async (req, res) => {
+    console.log(chalk.blue('[INFO] Redirecting to Auth URL: ', AUTHORIZATION_URL));
+    res.redirect(AUTHORIZATION_URL);
 });
 
 /**
@@ -58,7 +68,7 @@ app.get('/oauth/callback', async (req, res) => {
     console.log(chalk.blue(`[INFO] Sucessfully Retrieved access_token:`, accessToken.access_token));
 
     const options = {
-        uri: 'https://developer-api.nest.com',
+        uri: 'https://developer-api.nest.com/devices/cameras/5iDi4p4suzIIh2RTlil0k70ahi5nHAz4BCMuppafqTpc1acgItAvbQ',
         method: 'GET',
         path: '/',
         headers: {
@@ -70,7 +80,8 @@ app.get('/oauth/callback', async (req, res) => {
 
     try {
         let data = JSON.parse(await request(options));
-        res.json(data);
+        console.log(chalk.blue('[INFO] Successfully Retrieved Data for Camera: 5iDi4p4suzIIh2RTlil0k70ahi5nHAz4BCMuppafqTpc1acgItAvbQ'));
+        res.json({ ...data });
     } catch(err) {
         console.log(chalk.red('[ERROR] Error trading access_token for data.', err.message));
 
@@ -80,15 +91,4 @@ app.get('/oauth/callback', async (req, res) => {
             error: err
         });
     }
-
-    /**
-     * Handles redirecting the user to the Authorization url to show them what permissions are necessary for this
-     * app to function correctly
-     * @route GET /
-     */
-    app.get('/', async (req, res) => {
-        console.log(chalk.blue('[INFO] Redirecting to Auth URL: ', AUTHORIZATION_URL));
-        res.redirect(AUTHORIZATION_URL);
-    });
-
 });
