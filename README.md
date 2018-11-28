@@ -1,5 +1,5 @@
 <p align="center">
-   <img src="./assets/defendr_logo.png" />
+   <img src="./assets/defendr_logo.png" height="150" width="150" />
 </p>
 
 # Defendr
