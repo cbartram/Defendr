@@ -1,0 +1,49 @@
+{
+  "name": "defendr",
+  "version": "1.0.0",
+  "description": "Uses the nest camera to thrwart intruders by turning on Philips hue bulbs",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha ./test/index.test.js --timeout 5000 --exit",
+    "start": "backpack",
+    "build": "backpack build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cbartram/Defendr.git"
+  },
+  "keywords": [
+    "iot",
+    "nest",
+    "nodejs",
+    "javascript",
+    "server",
+    "express",
+    "light",
+    "hue",
+    "philips"
+  ],
+  "author": "cbartram",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cbartram/Defendr/issues"
+  },
+  "homepage": "https://github.com/cbartram/Defendr#readme",
+  "dependencies": {
+    "backpack-core": "^0.8.2",
+    "chalk": "^2.4.1",
+    "dotenv": "^6.1.0",
+    "express": "^4.16.4",
+    "figlet": "^1.2.1",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.5"
+  },
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "eslint": "^5.9.0",
+    "mocha": "^5.2.0"
+  },
+  "eslintConfig": {
+
+  }
+}
