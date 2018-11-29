@@ -92,7 +92,6 @@ app.get('/oauth/callback', async (req, res) => {
     source.addEventListener('put', async event => {
         console.log(chalk.blue('[INFO] Nest Streaming Data Received: ', event.data));
         const  { data } = JSON.parse(event.data);
-        // putKinesisItem(kinesis, data);
         const labels = await getRekognitionLabels(rekognition, data.snapshot_url);
         res.json({
             success: true,

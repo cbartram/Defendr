@@ -16,26 +16,14 @@ const hash = input => new Buffer(crypto.createHash('sha256').update(input).diges
  */
 const getAccessToken = async code => JSON.parse(await request.post(`https://api.home.nest.com/oauth2/access_token?client_id=${process.env.NEST_CLIENT_ID}&client_secret=${process.env.NEST_CLIENT_SECRET}&code=${code}&grant_type=authorization_code`));
 
-/**
- * PUT's an event into the kinesis stream for consumption.
- * @param kinesis Object AWS Kinesis object
- * @param data String/Object JSON Data to be inserted into Kinesis
- * @returns {Promise<void>}
- */
-const putKinesisItem = async (kinesis, data) => {
-    const params = {
-        Data: JSON.stringify(data),
-        PartitionKey: hash(data).substring(0, 24),
-        StreamName: 'Defendr',
-    };
-    try {
-        await kinesis.putRecord(params).promise();
-    } catch(err) {
-     console.log(chalk.red('[ERROR] Error Sending event to Kinesis Stream', err.message));
-     throw err;
-    }
-};
 
+/**
+ * Uploads an image Buffer to AWS Rekognition for processing. Rekognition will return a series of labels for different items that
+ * it detects within the image.
+ * @param rekognition AWS Rekognition object
+ * @param url URL to retrieve image from
+ * @returns {Promise<PromiseResult<Rekognition.DetectLabelsResponse, AWSError>>}
+ */
 const getRekognitionLabels = async (rekognition, url) => {
     console.log(url);
     const imageBuffer = new Buffer(await request({ uri: url, method: 'GET', encoding: null }));
@@ -43,8 +31,6 @@ const getRekognitionLabels = async (rekognition, url) => {
         Image: {
             Bytes: imageBuffer,
         },
-        // MaxLabels: 123,
-        // MinConfidence: 70
     };
 
     try {
