@@ -30,9 +30,11 @@
   },
   "homepage": "https://github.com/cbartram/Defendr#readme",
   "dependencies": {
+    "aws-sdk": "^2.366.0",
     "backpack-core": "^0.8.2",
     "chalk": "^2.4.1",
     "dotenv": "^6.1.0",
+    "eventsource": "^1.0.7",
     "express": "^4.16.4",
     "figlet": "^1.2.1",
     "request": "^2.88.0",
@@ -43,7 +45,5 @@
     "eslint": "^5.9.0",
     "mocha": "^5.2.0"
   },
-  "eslintConfig": {
-
-  }
+  "eslintConfig": {}
 }
