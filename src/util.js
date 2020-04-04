@@ -45,6 +45,5 @@ const getRekognitionLabels = async (rekognition, url) => {
 module.exports = {
     hash,
     getAccessToken,
-    putKinesisItem,
     getRekognitionLabels
 };

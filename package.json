@@ -30,6 +30,7 @@
   },
   "homepage": "https://github.com/cbartram/Defendr#readme",
   "dependencies": {
+    "august-connect": "^2.0.4",
     "aws-sdk": "^2.366.0",
     "backpack-core": "^0.8.2",
     "chalk": "^2.4.1",
@@ -37,7 +38,8 @@
     "eventsource": "^1.0.7",
     "express": "^4.16.4",
     "figlet": "^1.2.1",
-    "request": "^2.88.0",
+    "moment": "^2.24.0",
+    "request": "^2.88.2",
     "request-promise-native": "^1.0.5"
   },
   "devDependencies": {
