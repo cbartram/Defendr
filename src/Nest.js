@@ -1,11 +1,20 @@
 const request = require('request-promise-native');
 const moment = require('moment');
 const { config } = require('./constants');
-const { NEST_ID } = process.env;
 const Auth = require('./security/Auth');
-const { Observable, from, interval } = require('rxjs');
-const { switchMap, takeWhile, distinctUntilChanged, map } = require('rxjs/operators');
+const { from, interval, Subject } = require('rxjs');
+const {
+    switchMap,
+    takeWhile,
+    distinctUntilChanged,
+    map,
+    multicast,
+    refCount,
+} = require('rxjs/operators');
 
+/**
+ * Class which exposes several features on the Nest Camera API
+ */
 class Nest extends Auth {
 
     /**
@@ -19,18 +28,20 @@ class Nest extends Auth {
      */
     constructor(snapshotSubscriptionInterval = 5000, eventSubscriptionInterval = 3000) {
         super();
-        this._latestSnapshotObservable = interval(snapshotSubscriptionInterval)
-        this._observable = new Observable(subscriber => {
-            setInterval(() => {
-                this.getLatestSnapshot().then(data => subscriber.next(data));
-            }, subscriptionInterval)
-        });
-
+        const latestSnapshotSubject = new Subject();
+        const eventSubject = new Subject();
+        this._latestSnapshotObservable = interval(snapshotSubscriptionInterval).pipe(
+            switchMap(() => from(this.getLatestSnapshot())),
+            multicast(latestSnapshotSubject),
+            refCount()
+        );
         this._eventsObservable = interval(eventSubscriptionInterval).pipe(
             switchMap(() => from(this.getEvents())),
             takeWhile((events) => events.length >= 0),
             distinctUntilChanged((prevEvents, currEvents) => currEvents.length === lastEvents.length),
-            map(events => events[events.length - 1])
+            map(events => events[events.length - 1]),
+            multicast(eventSubject),
+            refCount()
         );
     }
 
@@ -39,18 +50,38 @@ class Nest extends Auth {
         return this;
     }
 
-    subscribeToLatestSnapshot() {
-        this._observable.subscribe({
+    subscribeToLatestSnapshot(onSnapshot, onError = () => {}, onComplete = () => {}) {
+        this._latestSnapshotObservable.subscribe({
             next(data) {
+                onSnapshot(data)
+            },
+            error(e) {
+                onError(e)
+            },
+            complete() {
+                onComplete()
             }
         });
     }
 
-    subscribeToEvents() {
+    /**
+     * Creates a multicasted subscription to the stream of camera events for both
+     * motion and sound
+     * @param onEvent Function called when a new event is received
+     * @param onError Function called when an error occurs during the processing of an event
+     * @param onComplete Function called when the subscriber no longer wishes to receive events.
+     */
+    subscribeToEvents(onEvent, onError = () => {}, onComplete = () => {}) {
         console.log('[INFO] Creating Subscription to Events');
         this._eventsObservable.subscribe({
             next(data) {
-                console.log('[INFO] Event :', data);
+                onEvent(data);
+            },
+            error(e) {
+                onError(e)
+            },
+            complete() {
+              onComplete()
             }
         });
     }
@@ -82,8 +113,8 @@ class Nest extends Auth {
                     .catch(err => rej(err));
             });
         } catch(e) {
-            console.log('[ERROR] Failed to retrieve events from the Nest API Refreshing Tokens: ', e);
-            refreshTokens();
+            console.log('[ERROR] Failed to retrieve events from the Nest API Refreshing OAuth & JWT Tokens: ', e);
+            this.refreshTokens();
         }
     };
 
@@ -98,7 +129,8 @@ class Nest extends Auth {
         try {
             return await request(options);
         } catch(e) {
-            console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', e)
+            console.log('[ERROR] Failed to retrieve snapshots from the Nest API Refreshing OAuth & JWT Tokens: ', e);
+            this.refreshTokens()
         }
     }
 
@@ -109,17 +141,16 @@ class Nest extends Auth {
      * @returns {Promise<void>}
      */
     async getSnapshot(id) {
-        if(!this.getJwtToken()) {
+        if(!this.jwtToken) {
             throw new Error('JWT token is null or undefined. Call #fetchJwtToken() to retrieve new json web token.');
         }
         const options = {
             'method': 'GET',
             'url': `${config.urls.NEXUS_HOST}${config.endpoints.SNAPSHOT_ENDPOINT}${id}?crop_type=timeline&width=300`,
             'headers': {
-                'Authorization': `Basic ${this.getJwtToken()}`
+                'Authorization': `Basic ${this.jwtToken}`
             }
         };
-        console.log('[INFO] Fetching Snapshots for URL: ', options.url);
         try {
             request(options).pipe(fs.createWriteStream(path.join(__dirname, '..', 'assets', moment().format('YYYY-mm-dd_hh:mm:ss.SSS') + '.jpeg'))).on('close', () => {
                 console.log('[INFO] Done writing image');

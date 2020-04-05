@@ -42,7 +42,9 @@ app.get('/events/all', async (req, res) => {
 
 
 app.get('/events/subscribe', (req, res) => {
-   nest.subscribeToEvents();
+   nest.subscribeToEvents((event) => {
+       console.log(chalk.green('[INFO] Event Received: '), event);
+   });
    res.json({ subscribed: true });
 });
 
