@@ -5,6 +5,7 @@ const AWS = require('aws-sdk');
 const express = require('express');
 const { PORT } = require('./constants');
 const Nest = require('./Nest');
+const { Observable } = require('rxjs');
 
 const app = express();
 
@@ -39,6 +40,14 @@ app.get('/events/all', async (req, res) => {
     res.json(events);
 });
 
+
+app.get('/events/subscribe', (req, res) => {
+   nest.subscribeToEvents();
+});
+
+/**
+ * Finds a specific event given its unique event Id
+ */
 app.get('/events/:id', async (req, res) => {
     if(!req.params.id || !req.params.id.includes('-labs')) {
         res.status(400).json({ error: true, message: 'Your event id is invalid. It must be a unix timestamp in seconds post fixed by -labs'});

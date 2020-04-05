@@ -3,19 +3,55 @@ const moment = require('moment');
 const { config } = require('./constants');
 const { NEST_ID } = process.env;
 const Auth = require('./security/Auth');
+const { of, Observable } = require('rxjs');
+const { delay, tap, mergeMap, repeat } = require('rxjs/operators');
 
 class Nest extends Auth {
 
-    constructor() {
+    /**
+     * Constructs a new Nest class. This creates an observable which can be polled
+     * at a specified interval to retrieve the latest image from the Nest camera.
+     * @param subscriptionInterval Integer the interval at which the latest mest image will be published to
+     * subscribers.
+     */
+    constructor(subscriptionInterval = 5000) {
         super();
+        this._observable = new Observable(subscriber => {
+            setInterval(() => {
+                this.getLatestSnapshot().then(data => subscriber.next(data));
+            }, subscriptionInterval)
+        });
+
+        this._eventsObservable = of({}).pipe(
+            mergeMap(_ => this.getEvents()),
+            tap((data) => {
+                console.log('[INFO] Got data: ', data.length);
+            }),
+            delay(3000),
+            repeat()
+        );
     }
 
     async init() {
         await this.fetchOAuthToken();
-        console.log('[INFO] Access token: ', this.getAccessToken());
-        await this.fetchJwtToken(this.getAccessToken());
-        console.log('[INFO] JWT Token: ', this.getJwtToken());
+        await this.fetchJwtToken(this.accessToken);
         return this;
+    }
+
+    subscribeToLatestSnapshot() {
+        this._observable.subscribe({
+            next(data) {
+            }
+        });
+    }
+
+    subscribeToEvents() {
+        console.log('[INFO] Creating Subscription to Events');
+        this._eventsObservable.subscribe({
+            next(data) {
+                console.log('[INFO] Event :', data);
+            }
+        });
     }
 
     /**
@@ -27,7 +63,7 @@ class Nest extends Auth {
      * @returns {Promise<any>}
      */
     getEvents(start = null, end = null) {
-        if(!this.getJwtToken()) {
+        if(!this.jwtToken) {
             throw new Error("Access token is null or undefined call: #fetchAccessToken() to retrieve new OAuth token.");
         }
 
@@ -35,7 +71,7 @@ class Nest extends Auth {
             'method': 'GET',
             'url': `${config.urls.NEXUS_HOST}${config.endpoints.EVENTS_ENDPOINT}`,
             'headers': {
-                'Authorization': `Basic ${this.getJwtToken()}`
+                'Authorization': `Basic ${this.jwtToken}`
             }
         };
         try {
@@ -48,6 +84,21 @@ class Nest extends Auth {
             console.log('[ERROR] Failed to retrieve events from the Nest API: ', e)
         }
     };
+
+    async getLatestSnapshot() {
+        const options = {
+            'method': 'GET',
+            'url': `${config.urls.NEXUS_HOST}${config.endpoints.LATEST_IMAGE_ENDPOINT}`,
+            'headers': {
+                'Authorization': `Basic ${this.jwtToken}`
+            }
+        };
+        try {
+            return await request(options);
+        } catch(e) {
+            console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', e)
+        }
+    }
 
     /**
      * Retrieves a single snapshot image and writes it to disk

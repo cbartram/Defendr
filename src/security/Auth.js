@@ -13,16 +13,15 @@ const { API_KEY, CLIENT_ID, REFRESH_TOKEN } = process.env;
 class Auth {
 
     constructor() {
-        this.accessToken = null;
-        this.jwtToken = null;
+        this._accessToken = null;
+        this._jwtToken = null;
     }
 
-    getAccessToken() {
-        return this.accessToken;
+    get accessToken() {
+        return this._accessToken;
     }
-
-    getJwtToken() {
-        return this.jwtToken;
+    get jwtToken() {
+        return this._jwtToken;
     }
 
     /**
@@ -30,7 +29,7 @@ class Auth {
      * @returns {Promise<any>}
      */
     async fetchOAuthToken() {
-        if(this.accessToken) return this.accessToken;
+        if(this._accessToken) return this._accessToken;
         const options = {
             'method': 'POST',
             'url': config.urls.OAUTH_URL,
@@ -46,7 +45,7 @@ class Auth {
         };
         try {
             const { access_token } = JSON.parse(await request(options));
-            this.accessToken = access_token;
+            this._accessToken = access_token;
             return access_token;
         } catch(e) {
             console.log('[ERROR] Failed to retrieve OAuth token from Nest API: ', e);
@@ -60,7 +59,7 @@ class Auth {
      * @returns {Promise<any>}
      */
     async fetchJwtToken(accessToken) {
-        if(this.jwtToken) return this.jwtToken;
+        if(this._jwtToken) return this._jwtToken;
         const options = {
             'method': 'POST',
             'url': config.urls.JWT_TOKEN_URL,
@@ -75,7 +74,7 @@ class Auth {
         };
         try {
             const { jwt } = JSON.parse(await request(options));
-            this.jwtToken = jwt;
+            this._jwtToken = jwt;
             return jwt;
         } catch(e) {
             console.log('[ERROR] Failed to retrieve JWT token from Nest API: ', e);
