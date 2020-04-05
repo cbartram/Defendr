@@ -13,21 +13,6 @@ const config = {
     }
 };
 
-getOAuthToken(REFRESH_TOKEN, CLIENT_ID).then(({ access_token }) => {
-    console.log('[INFO] Got OAuth Access token: ', access_token);
-    getJwtToken(API_KEY, access_token).then(({ jwt }) => {
-        console.log('[INFO] Retrieved JWT Token: ', jwt);
-        getEvents(jwt).then(events => {
-            console.log('[INFO] Retrieved: ', events.length, " events");
-            let ids = events.map(event => event.id);
-            console.log(ids);
-            getSnapshot(jwt, ids[0]).then(image => {
-                console.log('[INFO] Retrieved snapshot image...');
-            });
-        });
-    });
-});
-
 module.exports = {
     config,
     PORT: process.env.PORT || 3000

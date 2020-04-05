@@ -1,63 +1,56 @@
-const request = require('request-promise-native');
-const moment = require('moment');
-const { config } = require('./constants');
-const { NEST_ID } = process.env;
-const Auth = require('./security/Auth');
+require('dotenv').config();
+const figlet = require('figlet');
+const chalk = require('chalk');
+const AWS = require('aws-sdk');
+const express = require('express');
+const { PORT } = require('./constants');
+const Nest = require('./Nest');
 
-class Nest extends Auth {
+const app = express();
 
-    constructor() {
-        super();
-        this.getOAuthToken();
-        this.getJwtToken();
+AWS.config.update({
+    region: 'us-east-1',
+    apiVersions: {
+        rekognition: '2016-06-27',
+        s3: '2006-03-01',
     }
+});
 
-    /**
-     * Retrieves a list of recent events that the Nest camera detected. It can take two optional params
-     * start and end which are unix timestamps in seconds since epoch and represent a window of time to retrieve
-     * events for.
-     * @param accessToken String OAuth access token
-     * @param start integer Unix timestamp in seconds representing the starting period of time to retrieve events for
-     * @param end integer Unix timestamp in seconds representing the ending period of time to retrieve events for
-     * @returns {Promise<any>}
-     */
-    async getEvents(accessToken, start = null, end = null) {
-        const options = {
-            'method': 'GET',
-            'url': `${config.urls.NEXUS_HOST}${config.endpoints.EVENTS_ENDPOINT}`,
-            'headers': {
-                'Authorization': `Basic ${accessToken}`
-            }
-        };
-        try {
-            return JSON.parse(await request(options));
-        } catch(e) {
-            console.log('[ERROR] Failed to retrieve events from the Nest API: ', e)
-        }
-    };
+const rekognition = new AWS.Rekognition();
+let nest = new Nest();
 
-    /**
-     * Retrieves a single snapshot image and writes it to disk
-     * @param jwt String jwt token
-     * @param id
-     * @returns {Promise<void>}
-     */
-    async getSnapshot(jwt) {
-        const options = {
-            'method': 'GET',
-            'url': `${config.urls.NEXUS_HOST}${config.endpoints.SNAPSHOT_ENDPOINT}${NEST_ID}?crop_type=timeline&width=300`,
-            'headers': {
-                'Authorization': `Basic ${jwt}`
-            }
-        };
-        console.log('[INFO] Fetching Snapshots for URL: ', options.url);
-        try {
-            request(options).pipe(fs.createWriteStream(path.join(__dirname, '..', 'assets', moment().format('YYYY-mm-dd_hh:mm:ss.SSS') + '.jpeg'))).on('close', () => {
-                console.log('[INFO] Done writing image');
-            });
-        } catch(e) {
-            console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', e)
-        }
-    };
+figlet('Defendr', (err, data) => {
+    console.log(chalk.blue(data));
+    app.listen(PORT, () => {
+        console.log(chalk.green('================================='));
+        console.log(chalk.green(`| Server Listening on port ${PORT} |`));
+        console.log(chalk.green('================================='));
+        nest.init();
+    });
+});
 
-}
+/**
+ * Handles redirecting the user to the Authorization url to show them what permissions are necessary for this
+ * app to function correctly
+ * @route GET /
+ */
+app.get('/events/all', async (req, res) => {
+    const events = await nest.getEvents();
+    res.json(events);
+});
+
+app.get('/events/:id', async (req, res) => {
+    if(!req.params.id || !req.params.id.includes('-labs')) {
+        res.status(400).json({ error: true, message: 'Your event id is invalid. It must be a unix timestamp in seconds post fixed by -labs'});
+        return;
+    }
+   const events = await nest.getEvents()
+       .filter(({ id }) => id === req.params.id);
+
+    if(events.length > 0) {
+        res.json(events[0]);
+    } else {
+        res.status(400).json({ error: true, message: `No events with the id ${req.params.id} exist.` });ß
+    }
+});
+
