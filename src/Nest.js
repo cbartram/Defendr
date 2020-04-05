@@ -3,38 +3,39 @@ const moment = require('moment');
 const { config } = require('./constants');
 const { NEST_ID } = process.env;
 const Auth = require('./security/Auth');
-const { of, Observable } = require('rxjs');
-const { delay, tap, mergeMap, repeat } = require('rxjs/operators');
+const { Observable, from, interval } = require('rxjs');
+const { switchMap, takeWhile, distinctUntilChanged, map } = require('rxjs/operators');
 
 class Nest extends Auth {
 
     /**
      * Constructs a new Nest class. This creates an observable which can be polled
      * at a specified interval to retrieve the latest image from the Nest camera.
-     * @param subscriptionInterval Integer the interval at which the latest mest image will be published to
      * subscribers.
+     * @param snapshotSubscriptionInterval Integer the amount of time between executions of the observable when a new
+     * subscriber subscribes. Defaults to 5 seconds
+     * @param eventSubscriptionInterval Integer The amount of time between executions of the event observable when
+     * a new subscriber subscribes. Defaults to 3 seconds.
      */
-    constructor(subscriptionInterval = 5000) {
+    constructor(snapshotSubscriptionInterval = 5000, eventSubscriptionInterval = 3000) {
         super();
+        this._latestSnapshotObservable = interval(snapshotSubscriptionInterval)
         this._observable = new Observable(subscriber => {
             setInterval(() => {
                 this.getLatestSnapshot().then(data => subscriber.next(data));
             }, subscriptionInterval)
         });
 
-        this._eventsObservable = of({}).pipe(
-            mergeMap(_ => this.getEvents()),
-            tap((data) => {
-                console.log('[INFO] Got data: ', data.length);
-            }),
-            delay(3000),
-            repeat()
+        this._eventsObservable = interval(eventSubscriptionInterval).pipe(
+            switchMap(() => from(this.getEvents())),
+            takeWhile((events) => events.length >= 0),
+            distinctUntilChanged((prevEvents, currEvents) => currEvents.length === lastEvents.length),
+            map(events => events[events.length - 1])
         );
     }
 
     async init() {
-        await this.fetchOAuthToken();
-        await this.fetchJwtToken(this.accessToken);
+        this.refreshTokens();
         return this;
     }
 
@@ -81,7 +82,8 @@ class Nest extends Auth {
                     .catch(err => rej(err));
             });
         } catch(e) {
-            console.log('[ERROR] Failed to retrieve events from the Nest API: ', e)
+            console.log('[ERROR] Failed to retrieve events from the Nest API Refreshing Tokens: ', e);
+            refreshTokens();
         }
     };
 

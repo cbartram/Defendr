@@ -24,6 +24,15 @@ class Auth {
         return this._jwtToken;
     }
 
+    async refreshTokens() {
+        try {
+            this._accessToken = await this.fetchOAuthToken();
+            this._jwtToken = await this.fetchJwtToken(this._accessToken);
+        } catch(e) {
+            console.log('[ERROR] Failed to refresh OAuth or JWT tokens from Nest API. ', e);
+        }
+    }
+
     /**
      * Retrieves a Google OAuth token used to call Nest/Nexus API's and services.
      * @returns {Promise<any>}

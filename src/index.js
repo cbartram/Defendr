@@ -43,6 +43,7 @@ app.get('/events/all', async (req, res) => {
 
 app.get('/events/subscribe', (req, res) => {
    nest.subscribeToEvents();
+   res.json({ subscribed: true });
 });
 
 /**
