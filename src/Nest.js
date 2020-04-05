@@ -1,5 +1,8 @@
 const request = require('request-promise-native');
 const moment = require('moment');
+const chalk = require('chalk');
+const fs = require('fs');
+const path = require('path');
 const { config } = require('./constants');
 const Auth = require('./security/Auth');
 const { from, interval, Subject } = require('rxjs');
@@ -50,10 +53,20 @@ class Nest extends Auth {
         return this;
     }
 
-    subscribeToLatestSnapshot(onSnapshot, onError = () => {}, onComplete = () => {}) {
-        this._latestSnapshotObservable.subscribe({
+    /**
+     * Creates a multicasted subscription to the stream of camera events or camera snapshots for both
+     * motion and sound
+     * @param onEvent Function called when a new event is received
+     * @param type String Either event or snapshot. This value determines what observable is subscribed to and thus what data
+     * is being returned (either event data in JSON or a snapshot image as a byte array)
+     * @param onError Function called when an error occurs during the processing of an event
+     * @param onComplete Function called when the subscriber no longer wishes to receive events.
+     */
+    subscribe(onEvent, type, onError = () => {}, onComplete = () => {}) {
+        console.log('[INFO] Creating Subscription for Observable of type: ', type);
+        const observer = {
             next(data) {
-                onSnapshot(data)
+                onEvent(data)
             },
             error(e) {
                 onError(e)
@@ -61,29 +74,19 @@ class Nest extends Auth {
             complete() {
                 onComplete()
             }
-        });
-    }
-
-    /**
-     * Creates a multicasted subscription to the stream of camera events for both
-     * motion and sound
-     * @param onEvent Function called when a new event is received
-     * @param onError Function called when an error occurs during the processing of an event
-     * @param onComplete Function called when the subscriber no longer wishes to receive events.
-     */
-    subscribeToEvents(onEvent, onError = () => {}, onComplete = () => {}) {
-        console.log('[INFO] Creating Subscription to Events');
-        this._eventsObservable.subscribe({
-            next(data) {
-                onEvent(data);
-            },
-            error(e) {
-                onError(e)
-            },
-            complete() {
-              onComplete()
-            }
-        });
+        };
+        switch(type.toUpperCase()) {
+            case 'EVENT':
+            case 'EVENTS':
+                this._eventsObservable.subscribe(observer);
+                break;
+            case 'SNAPSHOT':
+            case 'SNAPSHOTS':
+                this._latestSnapshotObservable.subscribe(observer);
+                break;
+            default:
+                console.log(chalk.yellow(`[WARN] No known event listeners to subscribe to for input: ${type}. Use either "event" or "snapshot".`));
+        }
     }
 
     /**
@@ -152,9 +155,10 @@ class Nest extends Auth {
             }
         };
         try {
-            request(options).pipe(fs.createWriteStream(path.join(__dirname, '..', 'assets', moment().format('YYYY-mm-dd_hh:mm:ss.SSS') + '.jpeg'))).on('close', () => {
-                console.log('[INFO] Done writing image');
-            });
+            // request(options).pipe(fs.createWriteStream(path.join(__dirname, '..', 'assets', moment().format('YYYY-mm-dd_hh:mm:ss.SSS') + '.jpeg'))).on('close', () => {
+            //     console.log('[INFO] Done writing image');
+            // });
+            return await request(options);
         } catch(e) {
             console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', e)
         }
