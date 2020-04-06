@@ -141,9 +141,9 @@ class Nest extends Auth {
      * Retrieves a single snapshot image and writes it to disk
      * @param id String image id to retrieve. Will be postfixed with *-labs and prefixed with a unix time
      * stamp in seconds.
-     * @returns {Promise<void>}
+     * @returns Promise
      */
-    async getSnapshot(id) {
+    getSnapshot(id) {
         if(!this.jwtToken) {
             throw new Error('JWT token is null or undefined. Call #fetchJwtToken() to retrieve new json web token.');
         }
@@ -154,14 +154,18 @@ class Nest extends Auth {
                 'Authorization': `Basic ${this.jwtToken}`
             }
         };
-        try {
-            // request(options).pipe(fs.createWriteStream(path.join(__dirname, '..', 'assets', moment().format('YYYY-mm-dd_hh:mm:ss.SSS') + '.jpeg'))).on('close', () => {
-            //     console.log('[INFO] Done writing image');
-            // });
-            return await request(options);
-        } catch(e) {
-            console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', e)
-        }
+        const imagePath = path.join(__dirname, '..', 'assets', `snap_${moment().format('YYYY-mm-dd_hh:mm:ss.SSS')}.jpg`);
+
+        return new Promise((res, rej) => {
+            try {
+                request(options).pipe(fs.createWriteStream(imagePath)).on('close', () => {
+                    res(imagePath);
+                });
+            } catch(err) {
+                console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', err);
+                rej(err);
+            }
+        });
     };
 }
 

@@ -56,16 +56,17 @@ app.get('/events/subscribe', (req, res) => {
        console.log(chalk.green('[INFO] Event Received: '), event);
 
        // Get Snapshot image associated with this event
-       const image = await nest.getSnapshot(event.id);
+       const imagePath = await nest.getSnapshot(event.id);
 
-       await new AWS.S3.ManagedUpload({
-           params: {
-               Bucket: 'defendr',
-               Key: 'target_image.jpg',
-               Body: image,
-               // ACL: "public-read"
-           }
-       }).promise();
+       // console.log(chalk.green('[INFO] Uploading image from path: ', imagePath));
+       // await new AWS.S3.ManagedUpload({
+       //     params: {
+       //         Bucket: 'defendr',
+       //         Key: 'target_image.jpg',
+       //         Body: fs.readFileSync(imagePath),
+       //     }
+       // }).promise();
+       // console.log(chalk.green('[INFO] Upload Successful!'));
 
        const sourceImage = path.join(__dirname, '..', 'assets', 'source_image.jpg');
 
