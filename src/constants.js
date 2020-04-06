@@ -10,6 +10,11 @@ const config = {
         EVENTS_ENDPOINT: `/cuepoint/${NEST_ID}/2`,
         SNAPSHOT_ENDPOINT: `/event_snapshot/${NEST_ID}/`,
         LATEST_IMAGE_ENDPOINT: `/get_image?width=640&uuid=${NEST_ID}`
+    },
+    aws: {
+        s3: {
+            BUCKET_NAME: 'defendr'
+        }
     }
 };
 

@@ -3,9 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const figlet = require('figlet');
 const chalk = require('chalk');
+const moment = require('moment');
 const AWS = require('aws-sdk');
 const express = require('express');
-const { PORT } = require('./constants');
+const { PORT, config } = require('./constants');
 const Nest = require('./Nest');
 const { Observable } = require('rxjs');
 const {
@@ -27,7 +28,7 @@ AWS.config.update({
 });
 
 const rekognition = new AWS.Rekognition();
-const s3 = new AWS.S3({ params: { Bucket: 'defendr' }});
+const s3 = new AWS.S3({ params: { Bucket: config.aws.s3.BUCKET_NAME }});
 let nest = new Nest();
 
 figlet('Defendr', (err, data) => {
@@ -50,61 +51,87 @@ app.get('/events/all', async (req, res) => {
     res.json(events);
 });
 
+/**
+ * Uploads a specified image to S3.
+ * @param id String a unique identifier for the image.
+ * @param path String the path where the image can be read from.
+ */
+const uploadImage = (id, path) => {
+    console.log(chalk.green('[INFO] Uploading image to S3 from path: '), chalk.blue(path));
+    fs.readFile(path, async (err, data) => {
+       if(err) {
+           console.log(chalk.red('[ERROR] There was an error reading the image file specified: ', path, err));
+       } else {
+           try {
+               await new AWS.S3.ManagedUpload({
+                   params: {
+                       Bucket: config.aws.s3.BUCKET_NAME,
+                       Key: `target_image_${id}.jpg`,
+                       Body: data,
+                   }
+               }).promise();
+               console.log(chalk.green('[INFO] Upload Successful!'));
+               // TODO delete image from local filesystem
+           } catch(err) {
+               console.log(chalk.red(`[ERROR] There was an error persisting the image to S3 bucket: ${config.aws.s3.BUCKET_NAME}.`, err));
+           }
+       }
+    });
+};
+
+/**
+ * Triggers a comparison of faces using Amazon Rekognition to determine
+ * if two faces are similar enough to unlock the door.
+ * @param id String The event id (this must be the same id used to upload the image to S3 using #uploadImage()
+ * @param similarityThreshold Integer input parameter specifies the minimum confidence that compared faces must match to be included in the response
+ * @returns {Promise<void>}
+ */
+const analyzeImage = async (id, similarityThreshold = 70) => {
+    const params = {
+        SourceImage: {
+            S3Object: {
+                Bucket: config.aws.s3.BUCKET_NAME,
+                // TODO source image will need to be dynamic for different people soon
+                Name: 'source_image.jpg'
+            },
+        },
+        TargetImage: {
+            S3Object: {
+                Bucket: config.aws.s3.BUCKET_NAME,
+                Name: `target_image_${event.id}.jpg`
+            }
+        },
+        SimilarityThreshold: similarityThreshold
+    };
+    console.log(chalk.green('[INFO] Analyzing images and comparing to source image.'));
+    try {
+        const response = await rekognition.compareFaces(params).promise();
+        response.FaceMatches.forEach(data => {
+            let position   = data.Face.BoundingBox;
+            let similarity = data.Similarity;
+            console.log(`The face at: ${position.Left}, ${position.Top} matches with ${similarity} % confidence`)
+        });
+    } catch(err) {
+        err.message.includes("Request has invalid parameters") ?
+            console.log(chalk.red('[ERROR] The target image did not have any recognizable faces. Error message: ', err)) :
+            console.log(chalk.red('[ERROR] There was an error comparing the two faces:', err));
+    }
+};
 
 app.get('/events/subscribe', (req, res) => {
    nest.subscribe(async (event) => {
        console.log(chalk.green('[INFO] Event Received: '), event);
+       if(event.types.includes("motion")) {
+           const imagePath = path.join(__dirname, '..', 'assets', `target_image_${event.id}.jpg`);
+           await nest.getLatestSnapshot(imagePath);
+           // TODO does this snapshot contain a face?
 
-       // Get Snapshot image associated with this event
-       const imagePath = await nest.getSnapshot(event.id);
-
-       // console.log(chalk.green('[INFO] Uploading image from path: ', imagePath));
-       // await new AWS.S3.ManagedUpload({
-       //     params: {
-       //         Bucket: 'defendr',
-       //         Key: 'target_image.jpg',
-       //         Body: fs.readFileSync(imagePath),
-       //     }
-       // }).promise();
-       // console.log(chalk.green('[INFO] Upload Successful!'));
-
-       const sourceImage = path.join(__dirname, '..', 'assets', 'source_image.jpg');
-
-       console.log(chalk.green('[INFO] Received Event snapshot image...'));
-       // The event might not have a clear picture of the person because it captures it too soon or too late
-       // at this point it might be wise to subscribe to the latest snapshots an analyze all of them until we get
-       // a similarity threshold that is close enough to unlock the door
-
-       const params = {
-           SourceImage: {
-               S3Object: {
-                   Bucket: 'defendr',
-                   Name: 'source_image.jpg'
-               },
-           },
-           TargetImage: {
-              S3Object: {
-                  Bucket: 'defendr',
-                  Name: 'target_image.jpg'
-              }
-           },
-           SimilarityThreshold: 70
-       };
-
-       console.log(chalk.blue('[INFO] Rekognition Params: ', JSON.stringify(params)));
-
-       console.log(chalk.green('[INFO] Analyzing images and comparing to source image: ', sourceImage));
-       rekognition.compareFaces(params, (err, response) => {
-           if (err) {
-               console.log(chalk.red('[ERROR] There was an error comparing the two faces: ', err));
-           } else {
-               response.FaceMatches.forEach(data => {
-                   let position   = data.Face.BoundingBox;
-                   let similarity = data.Similarity;
-                   console.log(`The face at: ${position.Left}, ${position.Top} matches with ${similarity} % confidence`)
-               });
-           }
-       });
+           uploadImage(event.id, imagePath);
+           await analyzeImage(event.id);
+           console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has been processed sucessfully.`));
+       } else {
+           console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
+       }
    }, 'event');
    res.json({ subscribed: true });
 });

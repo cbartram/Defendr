@@ -121,7 +121,7 @@ class Nest extends Auth {
         }
     };
 
-    async getLatestSnapshot() {
+    async getLatestSnapshot(path) {
         const options = {
             'method': 'GET',
             'url': `${config.urls.NEXUS_HOST}${config.endpoints.LATEST_IMAGE_ENDPOINT}`,
@@ -130,7 +130,16 @@ class Nest extends Auth {
             }
         };
         try {
-            return await request(options);
+            return new Promise((res, rej) => {
+                try {
+                    request(options).pipe(fs.createWriteStream(path)).on('close', () => {
+                        res(path);
+                    });
+                } catch(err) {
+                    console.log('[ERROR] Failed to retrieve snapshots from the Nest API: ', err);
+                    rej(err);
+                }
+            });
         } catch(e) {
             console.log('[ERROR] Failed to retrieve snapshots from the Nest API Refreshing OAuth & JWT Tokens: ', e);
             this.refreshTokens()
@@ -155,7 +164,6 @@ class Nest extends Auth {
             }
         };
         const imagePath = path.join(__dirname, '..', 'assets', `snap_${moment().format('YYYY-mm-dd_hh:mm:ss.SSS')}.jpg`);
-
         return new Promise((res, rej) => {
             try {
                 request(options).pipe(fs.createWriteStream(imagePath)).on('close', () => {
