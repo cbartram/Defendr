@@ -56,27 +56,27 @@ app.get('/events/all', async (req, res) => {
  * @param id String a unique identifier for the image.
  * @param path String the path where the image can be read from.
  */
-const uploadImage = (id, path) => {
+const uploadImage = async (id, path) => {
     console.log(chalk.green('[INFO] Uploading image to S3 from path: '), chalk.blue(path));
-    fs.readFile(path, async (err, data) => {
-       if(err) {
-           console.log(chalk.red('[ERROR] There was an error reading the image file specified: ', path, err));
-       } else {
-           try {
-               await new AWS.S3.ManagedUpload({
-                   params: {
-                       Bucket: config.aws.s3.BUCKET_NAME,
-                       Key: `target_image_${id}.jpg`,
-                       Body: data,
-                   }
-               }).promise();
-               console.log(chalk.green('[INFO] Upload Successful!'));
-               // TODO delete image from local filesystem
-           } catch(err) {
-               console.log(chalk.red(`[ERROR] There was an error persisting the image to S3 bucket: ${config.aws.s3.BUCKET_NAME}.`, err));
-           }
-       }
-    });
+    let data;
+    try {
+        data = fs.readFileSync(path);
+    } catch(err) {
+        console.log(chalk.red('[ERROR] There was an error reading the image file specified: ', path, err));
+    }
+    try {
+        await new AWS.S3.ManagedUpload({
+            params: {
+                Bucket: config.aws.s3.BUCKET_NAME,
+                Key: `target_image_${id}.jpg`,
+                Body: data,
+            }
+        }).promise();
+        console.log(chalk.green('[INFO] Upload Successful!'));
+        // TODO delete image from local filesystem
+    } catch(err) {
+        console.log(chalk.red(`[ERROR] There was an error persisting the image to S3 bucket: ${config.aws.s3.BUCKET_NAME}.`, err));
+    }
 };
 
 /**
@@ -98,7 +98,7 @@ const analyzeImage = async (id, similarityThreshold = 70) => {
         TargetImage: {
             S3Object: {
                 Bucket: config.aws.s3.BUCKET_NAME,
-                Name: `target_image_${event.id}.jpg`
+                Name: `target_image_${id}.jpg`
             }
         },
         SimilarityThreshold: similarityThreshold
@@ -121,14 +121,14 @@ const analyzeImage = async (id, similarityThreshold = 70) => {
 app.get('/events/subscribe', (req, res) => {
    nest.subscribe(async (event) => {
        console.log(chalk.green('[INFO] Event Received: '), event);
-       if(event.types.includes("motion")) {
+       if(!event.types.includes("motion")) {
            const imagePath = path.join(__dirname, '..', 'assets', `target_image_${event.id}.jpg`);
            await nest.getLatestSnapshot(imagePath);
            // TODO does this snapshot contain a face?
 
-           uploadImage(event.id, imagePath);
+           await uploadImage(event.id, imagePath);
            await analyzeImage(event.id);
-           console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has been processed sucessfully.`));
+           console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
        } else {
            console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
        }
