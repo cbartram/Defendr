@@ -8,7 +8,7 @@ const config = {
     },
     endpoints: {
         EVENTS_ENDPOINT: `/cuepoint/${NEST_ID}/2`,
-        SNAPSHOT_ENDPOINT: `/event_snapshot/${NEST_ID}/`,
+        SNAPSHOT_ENDPOINT: `/event_snapshot/${NEST_ID}/?crop_type=timeline&width=700`,
         LATEST_IMAGE_ENDPOINT: `/get_image?width=640&uuid=${NEST_ID}`
     },
     aws: {
@@ -24,14 +24,19 @@ const config = {
        // the users face to analyze.
        retries: 3,
 
+       // The amount of time between each try to pull the latest image from the camera and analyze it for facial
+       // recognition. The time is in milliseconds
+       retryInterval: 5000,
+
        // The threshold by which the door unlocks when two images are similar enough. For example: if this value
        // is 85.00 then two faces within the images must be at least 85% similar in order for the door to unlock
        similarityThreshold: 85.00,
 
-      // Property to determine if the image should be removed from S3/local to save space after processing is complete
+      // Property to determine if the image should be permanently
+      // removed from S3/local to save space after processing is complete
       cleanup: {
-          s3: false,
-          local: false,
+          s3: true,
+          local: true,
       }
     }
 };

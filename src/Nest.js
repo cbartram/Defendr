@@ -34,14 +34,14 @@ class Nest extends Auth {
         const latestSnapshotSubject = new Subject();
         const eventSubject = new Subject();
         this._latestSnapshotObservable = interval(snapshotSubscriptionInterval).pipe(
-            switchMap(() => from(this.getLatestSnapshot())),
+            switchMap(() => from(this.saveLatestSnapshot())),
             multicast(latestSnapshotSubject),
             refCount()
         );
         this._eventsObservable = interval(eventSubscriptionInterval).pipe(
-            switchMap(() => from(this.getEvents())),
+            switchMap(() => from(this.getEvents(moment().startOf('day').valueOf(), moment().valueOf()))),
             takeWhile((events) => events.length >= 0),
-            distinctUntilChanged((prevEvents, currEvents) => currEvents.length === lastEvents.length),
+            distinctUntilChanged((prevEvents, currEvents) => currEvents.length === prevEvents.length),
             map(events => events[events.length - 1]),
             multicast(eventSubject),
             refCount()
@@ -101,10 +101,15 @@ class Nest extends Auth {
         if(!this.jwtToken) {
             throw new Error("Access token is null or undefined call: #fetchAccessToken() to retrieve new OAuth token.");
         }
+        let query = "";
+
+        if(start) query += `?start_time=${start}`;
+        if(end) query += `&end_time=${end}`;
+
 
         const options = {
             'method': 'GET',
-            'url': `${config.urls.NEXUS_HOST}${config.endpoints.EVENTS_ENDPOINT}`,
+            'url': `${config.urls.NEXUS_HOST}${config.endpoints.EVENTS_ENDPOINT}${query}`,
             'headers': {
                 'Authorization': `Basic ${this.jwtToken}`
             }

@@ -29,6 +29,7 @@ AWS.config.update({
 
 const rekognition = new AWS.Rekognition();
 const s3 = new AWS.S3({ params: { Bucket: config.aws.s3.bucket }});
+const sns = new AWS.SNS();
 let nest = new Nest();
 
 figlet('Defendr', (err, data) => {
@@ -39,16 +40,6 @@ figlet('Defendr', (err, data) => {
         console.log(chalk.green('================================='));
         nest.init();
     });
-});
-
-/**
- * Handles redirecting the user to the Authorization url to show them what permissions are necessary for this
- * app to function correctly
- * @route GET /
- */
-app.get('/events/all', async (req, res) => {
-    const events = await nest.getEvents();
-    res.json(events);
 });
 
 /**
@@ -102,7 +93,6 @@ const analyzeImage = async (Name, similarityThreshold = 0) => {
     console.log(chalk.green('[INFO] Analyzing images and comparing to source image.'));
     try {
         const { FaceMatches } = await rekognition.compareFaces(params).promise();
-        console.log(chalk.green('[INFO] Face Matches: ', JSON.stringify(FaceMatches)));
         return FaceMatches.length > 0 ? FaceMatches.map(({ Similarity }) => Similarity) : console.log(chalk.green('[INFO] No faces were present in the analyzed image.'));
     } catch(err) {
         err.message.includes("Request has invalid parameters") ?
@@ -168,9 +158,9 @@ const cleanup = (imageName, removeS3 = false) => {
     });
 };
 
-const uploadAndAnalyze = async (imagePath) => {
+const uploadAndAnalyze = async (imagePath, intervalId) => {
         const imageName = imagePath.substring(imagePath.lastIndexOf('/') + 1);
-        // await nest.saveLatestSnapshot(imagePath);
+        await nest.saveLatestSnapshot(imagePath);
         await uploadImage(imagePath);
         const containsFace = await hasFace(imageName);
 
@@ -181,7 +171,9 @@ const uploadAndAnalyze = async (imagePath) => {
 
             if(similarities > config.options.similarityThreshold) {
             // TODO unlock door
-                console.log(chalk.purple('[INFO] Unlocking Door!'));
+                console.log(chalk.cyan('[INFO] Unlocking Door!'));
+                clearInterval(intervalId);
+                publishToSns();
             }
             console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(imageName)} has finished processing.`));
 
@@ -198,40 +190,37 @@ const uploadAndAnalyze = async (imagePath) => {
         }
 };
 
+const publishToSns = () => {
+    const params = {
+        Message: 'Unlocking Door!',
+        MessageAttributes: {},
+        PhoneNumber: '4072470519',
+        Subject: 'Defendr',
+    };
+    sns.publish(params, function(err, data) {
+        if (err) console.log(err, err.stack); // an error occurred
+        else     console.log(data);           // successful response
+    });
+};
+
 app.get('/events/subscribe', (req, res) => {
     nest.subscribe(async (event) => {
         console.log(chalk.green('[INFO] Event Received: '), chalk.blue(event.id));
-        // const imageName = `target_image_${event.id}.jpg`;
-        const imageName = `target_image.jpg`;
+        const imageName = `target_image_${event.id}.jpg`;
+        // const imageName = `target_image.jpg`;
         const imagePath = path.join(__dirname, '..', 'assets', imageName);
         if(event.types.includes("motion")) {
             let i = 0;
             const intervalId = setInterval(async () => {
-                await uploadAndAnalyze(imagePath);
-                if(++i === config.options.retries) clearInterval(intervalId);
-            }, 5000);
+                await uploadAndAnalyze(imagePath, intervalId);
+                if(++i === config.options.retries) {
+                    console.log(chalk.cyan('[INFO] Analysis complete.'));
+                    clearInterval(intervalId);
+                }
+            }, config.options.retryInterval);
         } else {
             console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
         }
     }, 'event');
     res.json({ subscribed: true });
 });
-
-/**
- * Finds a specific event given its unique event Id
- */
-app.get('/events/:id', async (req, res) => {
-    if(!req.params.id || !req.params.id.includes('-labs')) {
-        res.status(400).json({ error: true, message: 'Your event id is invalid. It must be a unix timestamp in seconds post fixed by -labs'});
-        return;
-    }
-    const events = await nest.getEvents()
-        .filter(({ id }) => id === req.params.id);
-
-    if(events.length > 0) {
-        res.json(events[0]);
-    } else {
-        res.status(400).json({ error: true, message: `No events with the id ${req.params.id} exist.` });ß
-    }
-});
-
