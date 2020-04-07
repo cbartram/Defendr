@@ -63,7 +63,7 @@ class Nest extends Auth {
      * @param onComplete Function called when the subscriber no longer wishes to receive events.
      */
     subscribe(onEvent, type, onError = () => {}, onComplete = () => {}) {
-        console.log('[INFO] Creating Subscription for Observable of type: ', type);
+        console.log(chalk.green('[INFO] Creating Subscription for Observable of type:'), chalk.blue(type));
         const observer = {
             next(data) {
                 onEvent(data)

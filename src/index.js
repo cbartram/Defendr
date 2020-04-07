@@ -161,12 +161,14 @@ const cleanup = (imageName, removeS3 = false) => {
             if(removeS3) {
                 try {
                     await s3.deleteObject({ Bucket: config.aws.s3.BUCKET_NAME, Key: imageName }).promise();
-                    console.log(chalk.green('[INFO] The image: ', chalk.blue(imageName), 'was removed from the S3 bucket: ', chalk.blue(config.aws.s3.BUCKET_NAME)));
+                    console.log(chalk.green('[INFO] The image:', chalk.blue(imageName), 'was removed from the S3 bucket:', chalk.blue(config.aws.s3.BUCKET_NAME)));
+                    res();
                 } catch(err) {
-                    console.log(chalk.red('[ERROR] Failed to delete image: ', imageName, ' from S3 bucket: ', config.aws.s3.BUCKET_NAME, err));
+                    console.log(chalk.red('[ERROR] Failed to delete image:', imageName, 'from S3 bucket:', config.aws.s3.BUCKET_NAME, err));
+                    rej(err);
                 }
             } else {
-                console.log(chalk.green('[INFO] Skipping image deletion on S3 for image: '), chalk.blue(imageName), chalk.green(' in bucket: '), chalk.blue(config.aws.s3.BUCKET_NAME));
+                console.log(chalk.green('[INFO] Skipping image deletion on S3 for image:'), chalk.blue(imageName), chalk.green('in bucket:'), chalk.blue(config.aws.s3.BUCKET_NAME));
                 res();
             }
         });
@@ -181,9 +183,9 @@ app.get('/events/subscribe', (req, res) => {
             const imagePath = path.join(__dirname, '..', 'assets', imageName);
             await nest.getLatestSnapshot(imagePath);
             await uploadImage(event.id, imagePath);
-            const hasFace = await hasFace(imageName);
+            const containsFace = await hasFace(imageName);
 
-            if(hasFace) {
+            if(containsFace) {
                 await analyzeImage(event.id);
                 console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
                 // TODO unlock door
@@ -194,6 +196,10 @@ app.get('/events/subscribe', (req, res) => {
                 }
             } else {
                 console.log(chalk.green('[INFO] The image '), chalk.blue(imageName), chalk.green(' does not contain a recognizable face.'));
+                if(config.options.cleanup.LOCAL) {
+                    console.log(chalk.green('[INFO] Cleaning Up...'));
+                    await cleanup(imageName, config.options.cleanup.S3);
+                }
             }
 
         } else {
