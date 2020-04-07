@@ -118,17 +118,42 @@ const analyzeImage = async (id, similarityThreshold = 70) => {
     }
 };
 
+const hasFace = async (imageName) => {
+    const params = {
+        Image: {
+            S3Object: {
+                Bucket: config.aws.s3.BUCKET_NAME,
+                Name: imageName
+            }
+        }
+    };
+    try {
+        const { FaceDetails } = await rekognition.detectFaces(params).promise();
+        return FaceDetails.length > 0;
+    } catch(err) {
+        console.log(chalk.red('[ERROR] Failed to detect face within photo: ', err));
+        return false;
+    }
+};
+
 app.get('/events/subscribe', (req, res) => {
    nest.subscribe(async (event) => {
        console.log(chalk.green('[INFO] Event Received: '), event);
+       const imageName = `target_image_${event.id}.jpg`;
        if(!event.types.includes("motion")) {
-           const imagePath = path.join(__dirname, '..', 'assets', `target_image_${event.id}.jpg`);
+           const imagePath = path.join(__dirname, '..', 'assets', imageName);
            await nest.getLatestSnapshot(imagePath);
-           // TODO does this snapshot contain a face?
-
            await uploadImage(event.id, imagePath);
-           await analyzeImage(event.id);
-           console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
+           const hasFace = await hasFace(imageName);
+
+           if(hasFace) {
+               await analyzeImage(event.id);
+               console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
+               // TODO unlock door
+           } else {
+               console.log(chalk.green('[INFO] The image '), chalk.blue(imageName), chalk.green(' does not contain a recognizable face.'));
+           }
+
        } else {
            console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
        }
