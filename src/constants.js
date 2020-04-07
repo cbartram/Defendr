@@ -15,6 +15,13 @@ const config = {
         s3: {
             BUCKET_NAME: 'defendr'
         }
+    },
+    options: {
+      // Property to determine if the image should be removed from S3/local to save space after processing is complete
+      cleanup: {
+          S3: true,
+          LOCAL: true,
+      }
     }
 };
 

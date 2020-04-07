@@ -118,6 +118,12 @@ const analyzeImage = async (id, similarityThreshold = 70) => {
     }
 };
 
+/**
+ * Returns a boolean value if the image name in S3 contains a recognizable human face. If the image contains
+ * multiple faces this function will still return true.
+ * @param imageName String the name of the image in S3 including all S3 prefixes.
+ * @returns {Promise<boolean>} True if the image contains a face and false otherwise
+ */
 const hasFace = async (imageName) => {
     const params = {
         Image: {
@@ -136,29 +142,65 @@ const hasFace = async (imageName) => {
     }
 };
 
+/**
+ * Cleans up by removing the image from S3 and/or Local. This function will always delete the image from the local machine but
+ * can optionally also remove the image from S3.
+ * @param imageName String the name of the image in S3 (the path will be computed based on the name of the image)
+ * @param removeS3 boolean true if the image should also be deleted from S3.
+ * @returns {Promise<void>}
+ */
+const cleanup = (imageName, removeS3 = false) => {
+    const imagePath = path.join(__dirname, '..', 'assets', imageName);
+    return new Promise((res, rej) => {
+        fs.unlink(imagePath, async (err) => {
+            if (err) {
+                console.log(chalk.red('[ERROR] Failed to remove image from local machine. ', err));
+                rej(err);
+            }
+
+            if(removeS3) {
+                try {
+                    await s3.deleteObject({ Bucket: config.aws.s3.BUCKET_NAME, Key: imageName }).promise();
+                    console.log(chalk.green('[INFO] The image: ', chalk.blue(imageName), 'was removed from the S3 bucket: ', chalk.blue(config.aws.s3.BUCKET_NAME)));
+                } catch(err) {
+                    console.log(chalk.red('[ERROR] Failed to delete image: ', imageName, ' from S3 bucket: ', config.aws.s3.BUCKET_NAME, err));
+                }
+            } else {
+                console.log(chalk.green('[INFO] Skipping image deletion on S3 for image: '), chalk.blue(imageName), chalk.green(' in bucket: '), chalk.blue(config.aws.s3.BUCKET_NAME));
+                res();
+            }
+        });
+    });
+};
+
 app.get('/events/subscribe', (req, res) => {
-   nest.subscribe(async (event) => {
-       console.log(chalk.green('[INFO] Event Received: '), event);
-       const imageName = `target_image_${event.id}.jpg`;
-       if(!event.types.includes("motion")) {
-           const imagePath = path.join(__dirname, '..', 'assets', imageName);
-           await nest.getLatestSnapshot(imagePath);
-           await uploadImage(event.id, imagePath);
-           const hasFace = await hasFace(imageName);
+    nest.subscribe(async (event) => {
+        console.log(chalk.green('[INFO] Event Received: '), event);
+        const imageName = `target_image_${event.id}.jpg`;
+        if(!event.types.includes("motion")) {
+            const imagePath = path.join(__dirname, '..', 'assets', imageName);
+            await nest.getLatestSnapshot(imagePath);
+            await uploadImage(event.id, imagePath);
+            const hasFace = await hasFace(imageName);
 
-           if(hasFace) {
-               await analyzeImage(event.id);
-               console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
-               // TODO unlock door
-           } else {
-               console.log(chalk.green('[INFO] The image '), chalk.blue(imageName), chalk.green(' does not contain a recognizable face.'));
-           }
+            if(hasFace) {
+                await analyzeImage(event.id);
+                console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
+                // TODO unlock door
 
-       } else {
-           console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
-       }
-   }, 'event');
-   res.json({ subscribed: true });
+                if(config.options.cleanup.LOCAL) {
+                    console.log(chalk.green('[INFO] Cleaning Up...'));
+                    await cleanup(imageName, config.options.cleanup.S3);
+                }
+            } else {
+                console.log(chalk.green('[INFO] The image '), chalk.blue(imageName), chalk.green(' does not contain a recognizable face.'));
+            }
+
+        } else {
+            console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
+        }
+    }, 'event');
+    res.json({ subscribed: true });
 });
 
 /**
@@ -169,8 +211,8 @@ app.get('/events/:id', async (req, res) => {
         res.status(400).json({ error: true, message: 'Your event id is invalid. It must be a unix timestamp in seconds post fixed by -labs'});
         return;
     }
-   const events = await nest.getEvents()
-       .filter(({ id }) => id === req.params.id);
+    const events = await nest.getEvents()
+        .filter(({ id }) => id === req.params.id);
 
     if(events.length > 0) {
         res.json(events[0]);
