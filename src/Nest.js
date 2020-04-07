@@ -121,7 +121,7 @@ class Nest extends Auth {
         }
     };
 
-    async getLatestSnapshot(path) {
+    async saveLatestSnapshot(path) {
         const options = {
             'method': 'GET',
             'url': `${config.urls.NEXUS_HOST}${config.endpoints.LATEST_IMAGE_ENDPOINT}`,

@@ -28,7 +28,7 @@ AWS.config.update({
 });
 
 const rekognition = new AWS.Rekognition();
-const s3 = new AWS.S3({ params: { Bucket: config.aws.s3.BUCKET_NAME }});
+const s3 = new AWS.S3({ params: { Bucket: config.aws.s3.bucket }});
 let nest = new Nest();
 
 figlet('Defendr', (err, data) => {
@@ -53,10 +53,10 @@ app.get('/events/all', async (req, res) => {
 
 /**
  * Uploads a specified image to S3.
- * @param id String a unique identifier for the image.
+ * @param Key String The image name to upload to S3
  * @param path String the path where the image can be read from.
  */
-const uploadImage = async (id, path) => {
+const uploadImage = async (path) => {
     console.log(chalk.green('[INFO] Uploading image to S3 from path: '), chalk.blue(path));
     let data;
     try {
@@ -65,52 +65,45 @@ const uploadImage = async (id, path) => {
         console.log(chalk.red('[ERROR] There was an error reading the image file specified: ', path, err));
     }
     try {
-        await new AWS.S3.ManagedUpload({
-            params: {
-                Bucket: config.aws.s3.BUCKET_NAME,
-                Key: `target_image_${id}.jpg`,
+        await s3.upload({
+                Bucket: config.aws.s3.bucket,
+                Key: path.substring(path.lastIndexOf('/') + 1),
                 Body: data,
-            }
         }).promise();
-        console.log(chalk.green('[INFO] Upload Successful!'));
-        // TODO delete image from local filesystem
     } catch(err) {
-        console.log(chalk.red(`[ERROR] There was an error persisting the image to S3 bucket: ${config.aws.s3.BUCKET_NAME}.`, err));
+        console.log(chalk.red(`[ERROR] There was an error persisting the image to S3 bucket: ${config.aws.s3.bucket}.`, err));
     }
 };
 
 /**
  * Triggers a comparison of faces using Amazon Rekognition to determine
  * if two faces are similar enough to unlock the door.
- * @param id String The event id (this must be the same id used to upload the image to S3 using #uploadImage()
+ * @param Name String The name of the image in S3 to analyze
  * @param similarityThreshold Integer input parameter specifies the minimum confidence that compared faces must match to be included in the response
  * @returns {Promise<void>}
  */
-const analyzeImage = async (id, similarityThreshold = 70) => {
+const analyzeImage = async (Name, similarityThreshold = 0) => {
     const params = {
         SourceImage: {
             S3Object: {
-                Bucket: config.aws.s3.BUCKET_NAME,
+                Bucket: config.aws.s3.bucket,
                 // TODO source image will need to be dynamic for different people soon
                 Name: 'source_image.jpg'
             },
         },
         TargetImage: {
             S3Object: {
-                Bucket: config.aws.s3.BUCKET_NAME,
-                Name: `target_image_${id}.jpg`
+                Bucket: config.aws.s3.bucket,
+                Name
             }
         },
         SimilarityThreshold: similarityThreshold
     };
     console.log(chalk.green('[INFO] Analyzing images and comparing to source image.'));
     try {
-        const response = await rekognition.compareFaces(params).promise();
-        response.FaceMatches.forEach(data => {
-            let position   = data.Face.BoundingBox;
-            let similarity = data.Similarity;
-            console.log(`The face at: ${position.Left}, ${position.Top} matches with ${similarity} % confidence`)
-        });
+        const { FaceMatches } = await rekognition.compareFaces(params).promise();
+        console.log(chalk.green('[INFO] Face Matches: ', JSON.stringify(FaceMatches)));
+        return FaceMatches.length > 0 ? FaceMatches.map(({ Similarity }) => Similarity) : console.log(chalk.green('[INFO] No faces were present in the analyzed image.'));
     } catch(err) {
         err.message.includes("Request has invalid parameters") ?
             console.log(chalk.red('[ERROR] The target image did not have any recognizable faces. Error message: ', err)) :
@@ -128,7 +121,7 @@ const hasFace = async (imageName) => {
     const params = {
         Image: {
             S3Object: {
-                Bucket: config.aws.s3.BUCKET_NAME,
+                Bucket: config.aws.s3.bucket,
                 Name: imageName
             }
         }
@@ -160,48 +153,63 @@ const cleanup = (imageName, removeS3 = false) => {
 
             if(removeS3) {
                 try {
-                    await s3.deleteObject({ Bucket: config.aws.s3.BUCKET_NAME, Key: imageName }).promise();
-                    console.log(chalk.green('[INFO] The image:', chalk.blue(imageName), 'was removed from the S3 bucket:', chalk.blue(config.aws.s3.BUCKET_NAME)));
+                    await s3.deleteObject({ Bucket: config.aws.s3.bucket, Key: imageName }).promise();
+                    console.log(chalk.green('[INFO] The image:', chalk.blue(imageName), 'was removed from the S3 bucket:', chalk.blue(config.aws.s3.bucket)));
                     res();
                 } catch(err) {
-                    console.log(chalk.red('[ERROR] Failed to delete image:', imageName, 'from S3 bucket:', config.aws.s3.BUCKET_NAME, err));
+                    console.log(chalk.red('[ERROR] Failed to delete image:', imageName, 'from S3 bucket:', config.aws.s3.bucket, err));
                     rej(err);
                 }
             } else {
-                console.log(chalk.green('[INFO] Skipping image deletion on S3 for image:'), chalk.blue(imageName), chalk.green('in bucket:'), chalk.blue(config.aws.s3.BUCKET_NAME));
+                console.log(chalk.green('[INFO] Skipping image deletion on S3 for image:'), chalk.blue(imageName), chalk.green('in bucket:'), chalk.blue(config.aws.s3.bucket));
                 res();
             }
         });
     });
 };
 
+const uploadAndAnalyze = async (imagePath) => {
+        const imageName = imagePath.substring(imagePath.lastIndexOf('/') + 1);
+        // await nest.saveLatestSnapshot(imagePath);
+        await uploadImage(imagePath);
+        const containsFace = await hasFace(imageName);
+
+        if(containsFace) {
+            const similarities = await analyzeImage(imageName);
+            console.log(chalk.green('[DEBUG] Similarities: ', similarities));
+            console.log(chalk.green(`[INFO] The face is ${chalk.blue(similarities[0])}% similar to the source image.`));
+
+            if(similarities > config.options.similarityThreshold) {
+            // TODO unlock door
+                console.log(chalk.purple('[INFO] Unlocking Door!'));
+            }
+            console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(imageName)} has finished processing.`));
+
+            if(config.options.cleanup.local) {
+                console.log(chalk.green('[INFO] Cleaning Up...'));
+                await cleanup(imageName, config.options.cleanup.s3);
+            }
+        } else {
+            console.log(chalk.green('[INFO] The image'), chalk.blue(imageName), chalk.green('does not contain a recognizable face.'));
+            if(config.options.cleanup.local) {
+                console.log(chalk.green('[INFO] Cleaning Up...'));
+                await cleanup(imageName, config.options.cleanup.s3);
+            }
+        }
+};
+
 app.get('/events/subscribe', (req, res) => {
     nest.subscribe(async (event) => {
-        console.log(chalk.green('[INFO] Event Received: '), event);
-        const imageName = `target_image_${event.id}.jpg`;
-        if(!event.types.includes("motion")) {
-            const imagePath = path.join(__dirname, '..', 'assets', imageName);
-            await nest.getLatestSnapshot(imagePath);
-            await uploadImage(event.id, imagePath);
-            const containsFace = await hasFace(imageName);
-
-            if(containsFace) {
-                await analyzeImage(event.id);
-                console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(event.id)} has finished processing.`));
-                // TODO unlock door
-
-                if(config.options.cleanup.LOCAL) {
-                    console.log(chalk.green('[INFO] Cleaning Up...'));
-                    await cleanup(imageName, config.options.cleanup.S3);
-                }
-            } else {
-                console.log(chalk.green('[INFO] The image '), chalk.blue(imageName), chalk.green(' does not contain a recognizable face.'));
-                if(config.options.cleanup.LOCAL) {
-                    console.log(chalk.green('[INFO] Cleaning Up...'));
-                    await cleanup(imageName, config.options.cleanup.S3);
-                }
-            }
-
+        console.log(chalk.green('[INFO] Event Received: '), chalk.blue(event.id));
+        // const imageName = `target_image_${event.id}.jpg`;
+        const imageName = `target_image.jpg`;
+        const imagePath = path.join(__dirname, '..', 'assets', imageName);
+        if(event.types.includes("motion")) {
+            let i = 0;
+            const intervalId = setInterval(async () => {
+                await uploadAndAnalyze(imagePath);
+                if(++i === config.options.retries) clearInterval(intervalId);
+            }, 5000);
         } else {
             console.log(chalk.green('[INFO] Event does not contain any motion from the camera. Ignoring event.'));
         }
