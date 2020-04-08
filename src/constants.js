@@ -1,4 +1,4 @@
-const { NEST_ID } = process.env;
+const { NEST_ID, PHONE_NUMBER } = process.env;
 
 const config = {
     urls: {
@@ -14,6 +14,9 @@ const config = {
     aws: {
         s3: {
             bucket: 'defendr'
+        },
+        sns: {
+            phoneNumber: PHONE_NUMBER
         }
     },
     options: {

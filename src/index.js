@@ -3,19 +3,26 @@ const fs = require('fs');
 const path = require('path');
 const figlet = require('figlet');
 const chalk = require('chalk');
-const moment = require('moment');
+let august = require('august-connect');
 const AWS = require('aws-sdk');
 const express = require('express');
 const { PORT, config } = require('./constants');
 const Nest = require('./Nest');
-const { Observable } = require('rxjs');
 const {
     AWS_REGION,
     AWS_ACCESS_KEY_ID,
-    AWS_SECRET_ACCESS_KEY
+    AWS_SECRET_ACCESS_KEY,
+    AUGUST_DEVICE_ID
 } = process.env;
 
 const app = express();
+
+august.status(AUGUST_DEVICE_ID, console.log);
+august.authorize('543717', () => {
+    console.log('Done');
+
+});
+
 
 AWS.config.update({
     region: AWS_REGION,
@@ -173,7 +180,7 @@ const uploadAndAnalyze = async (imagePath, intervalId) => {
             // TODO unlock door
                 console.log(chalk.cyan('[INFO] Unlocking Door!'));
                 clearInterval(intervalId);
-                publishToSns();
+                sendTextMessage();
             }
             console.log(chalk.green(`[INFO] Event with the id: ${chalk.blue(imageName)} has finished processing.`));
 
@@ -190,24 +197,24 @@ const uploadAndAnalyze = async (imagePath, intervalId) => {
         }
 };
 
-const publishToSns = () => {
+/**
+ * Sends a basic SMS text message to the specified phone number.
+ * @returns Promise
+ */
+const sendTextMessage = async () => {
     const params = {
         Message: 'Unlocking Door!',
-        MessageAttributes: {},
-        PhoneNumber: '4072470519',
+        PhoneNumber: config.aws.sns.phoneNumber,
         Subject: 'Defendr',
     };
-    sns.publish(params, function(err, data) {
-        if (err) console.log(err, err.stack); // an error occurred
-        else     console.log(data);           // successful response
-    });
+    return await sns.publish(params).promise();
 };
+
 
 app.get('/events/subscribe', (req, res) => {
     nest.subscribe(async (event) => {
         console.log(chalk.green('[INFO] Event Received: '), chalk.blue(event.id));
         const imageName = `target_image_${event.id}.jpg`;
-        // const imageName = `target_image.jpg`;
         const imagePath = path.join(__dirname, '..', 'assets', imageName);
         if(event.types.includes("motion")) {
             let i = 0;
